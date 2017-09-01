@@ -24,6 +24,8 @@
 #include <thread>
 #include <mutex>
 
+#include <random>
+
 #include <fstream>
 
 template <typename T>
@@ -656,12 +658,12 @@ void modifyPopulation4(const Vector2D* in, Vector2D* out, double c)
     {
         if (rand() % 60 == 0)
         {
-            delta.setX(delta.x() + c * 0.02f * 0.4f * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setX(delta.x() + c * 0.02 * 0.4 * (rand() - RAND_MAX / 2) / RAND_MAX);
         }
 
         if (rand() % 60 == 0)
         {
-            delta.setY(delta.y() + c * 0.01f * 0.4f * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setY(delta.y() + c * 0.01 * 0.4 * (rand() - RAND_MAX / 2) / RAND_MAX);
         }
 
         offset += 0.15 * delta;
@@ -697,12 +699,12 @@ void modifyPopulation3(const Vector2D* in, Vector2D* out, double c)
     {
         if (rand() % 100 == 0)
         {
-            delta.setX(delta.x() + c * 0.03f * 0.5f * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setX(delta.x() + c * 0.03 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
         }
 
         if (rand() % 90 == 0)
         {
-            delta.setY(delta.y() + c * 0.015f * 0.5f * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setY(delta.y() + c * 0.015 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
         }
 
         offset += 0.1 * delta;
@@ -735,12 +737,12 @@ void modifyPopulation2(const Vector2D* in, Vector2D* out, double c)
     {
         if (rand() % 90 == 0)
         {
-            delta.setX(delta.x() + c * 0.03f * 0.5f * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setX(delta.x() + c * 0.03 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
         }
 
         if (rand() % 90 == 0)
         {
-            delta.setY(delta.y() + c * 0.015f * 0.5f * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setY(delta.y() + c * 0.015 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
         }
 
         offset += 0.05 * delta;
@@ -794,7 +796,7 @@ void selfCross(Vector2D* out)
 
 void filterLow(Vector2D* out, double a = 1. - 0.5 * rand() / RAND_MAX)
 {
-    const auto b = (1. - a) * 0.5f;
+    const auto b = (1. - a) * 0.5;
     auto prevY = out[0].y();
     for (int i = 1; i < Steps; ++i)
     {
@@ -804,8 +806,12 @@ void filterLow(Vector2D* out, double a = 1. - 0.5 * rand() / RAND_MAX)
     }
 }
 
-void stretchOffsets(Vector2D* offsets, const double c = 1.1 - 0.2 * rand() / RAND_MAX)
+void stretchOffsets(Vector2D* offsets, double k = 0.1)
 {
+    assert(k >= 0 && k < 1.);
+
+    auto rnd = rand();
+    const double c = 1. + k - k * 2. * rnd / RAND_MAX;
     const double fulcrum = offsets[0].x();
     for (int i = 0; i <= Steps; ++i)
     {
@@ -823,8 +829,7 @@ void modifyPopulation(const Vector2D* in, Vector2D* out, double c)
 
     if (rand() % 2)
     {
-        auto a = c * 0.01 + 1.;
-        stretchOffsets(out, a - c * 0.02 * rand() / RAND_MAX);
+        stretchOffsets(out, c * 0.02);
     }
 
     if (rand() % 2)
@@ -1197,21 +1202,23 @@ void Investigation::genetic()
 
     for (size_t currentIndex = 0; currentIndex < threads.size(); ++currentIndex)
     {
+
        tempResults[currentIndex] = results.front();
 
        threads[currentIndex].reset(new std::thread([this, currentIndex]()
        {
+           srand(clock() + currentIndex);
            while (!isTerminated)
            {
                auto& r = tempResults[currentIndex];
 
                if (rand() % 20)
                {
-                   stretchOffsets(r.points.data(), 1.1f - sqrt(scale) * 0.2f * rand() / RAND_MAX);
+                   stretchOffsets(r.points.data(), 0.2 * sqrt(scale));
 
                    for (int i = 0; i < 4; ++i)
                    {
-                       filterLow(r.points.data(), 0.3f);
+                       filterLow(r.points.data(), 0.3);
                    }
                }
 
@@ -1235,7 +1242,7 @@ void Investigation::genetic()
                     }
 
                     oldScale = scale;
-                    scale *= 0.996f;
+                    scale *= 0.996;
                }
 
                if (isResultModified || isTerminated)
@@ -1363,7 +1370,7 @@ std::vector<QPointF> Investigation::getPoints(int index, double w, double h)
             if (r.image[t++])
             {
                 result.emplace_back(
-                            w / 2 + ((i + 0.5) * maxSofaLen / double(ImageW) - maxSofaLen + 1.5f) * w / sc,
+                            w / 2 + ((i + 0.5) * maxSofaLen / double(ImageW) - maxSofaLen + 1.5) * w / sc,
                             h / 2 - ((j + 0.5) / double(ImageH)) * w / sc);
             }
         }
@@ -1380,6 +1387,7 @@ void Investigation::stop()
         for (auto& thr : threads)
         {
             thr->join();
+            thr.reset();
         }
     }
 }
