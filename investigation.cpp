@@ -1230,7 +1230,7 @@ void Investigation::genetic()
 
                    for (int i = 0; i < 5; ++i)
                    {
-                       filterLow(thrData.result.points.data(), rand(thrData.generator, 0, 0.8));
+                       filterLow(thrData.result.points.data(), rand(thrData.generator, 0., 0.8));
                    }
                }
 
