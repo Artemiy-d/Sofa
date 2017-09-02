@@ -20,13 +20,11 @@
 
 #include <map>
 #include <vector>
-#include <memory>
-#include <thread>
-#include <mutex>
-
-#include <random>
-
 #include <fstream>
+
+#include <xmmintrin.h>
+#include <emmintrin.h>
+
 
 template <typename T>
 class Allocator
@@ -634,6 +632,26 @@ constexpr double maxSofaLen = 4;
 int ImageH = 200;
 int ImageW = static_cast<int>(ImageH * maxSofaLen);
 
+template <typename T>
+T rand(Generator& generator, const T& a, const T& b)
+{
+    return typename std::conditional<
+            std::is_floating_point<T>::value,
+            std::uniform_real_distribution<T>,
+            std::uniform_int_distribution<T>
+            >::type(a, b)(generator);
+}
+
+template <typename T>
+T rand(Generator& generator, const T& a)
+{
+    return rand(generator, a, -a);
+}
+
+inline bool chance(Generator& generator, int f)
+{
+    return generator() % f == 0;
+}
 
 
 int getIndex(int i)
@@ -646,7 +664,7 @@ int getRIndex(int i)
     return Steps - i - 1;
 }
 
-void modifyPopulation4(const Vector2D* in, Vector2D* out, double c)
+void modifyPopulation4(Generator& generator, const Vector2D* in, Vector2D* out, double c)
 {
     Vector2D offset;
     Vector2D delta;
@@ -656,14 +674,14 @@ void modifyPopulation4(const Vector2D* in, Vector2D* out, double c)
 
     for (; i <= Steps; ++i)
     {
-        if (rand() % 60 == 0)
+        if (chance(generator, 60))
         {
-            delta.setX(delta.x() + c * 0.02 * 0.4 * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setX(delta.x() + rand(generator, c * 0.02 * 0.2));
         }
 
-        if (rand() % 60 == 0)
+        if (chance(generator, 60))
         {
-            delta.setY(delta.y() + c * 0.01 * 0.4 * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setY(delta.y() + rand(generator, c * 0.01 * 0.2));
         }
 
         offset += 0.15 * delta;
@@ -684,7 +702,7 @@ void modifyPopulation4(const Vector2D* in, Vector2D* out, double c)
     }
 }
 
-void modifyPopulation3(const Vector2D* in, Vector2D* out, double c)
+void modifyPopulation3(Generator& generator, const Vector2D* in, Vector2D* out, double c)
 {
   //  out[Steps - 1].setX(in[Steps - 1].x() + 0.2 * (rand() - RAND_MAX / 2) / RAND_MAX);
   //  double c = out[Steps - 1].x() / in[Steps - 1].x();
@@ -697,14 +715,14 @@ void modifyPopulation3(const Vector2D* in, Vector2D* out, double c)
 
     for (; i <= Steps; ++i)
     {
-        if (rand() % 100 == 0)
+        if (chance(generator, 100))
         {
-            delta.setX(delta.x() + c * 0.03 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setX(delta.x() + rand(generator, c * 0.03 * 0.25));
         }
 
-        if (rand() % 90 == 0)
+        if (chance(generator, 90))
         {
-            delta.setY(delta.y() + c * 0.015 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setY(delta.y() + rand(generator, c * 0.015 * 0.25));
         }
 
         offset += 0.1 * delta;
@@ -725,7 +743,7 @@ void modifyPopulation3(const Vector2D* in, Vector2D* out, double c)
     }
 }
 
-void modifyPopulation2(const Vector2D* in, Vector2D* out, double c)
+void modifyPopulation2(Generator& generator, const Vector2D* in, Vector2D* out, double c)
 {
     Vector2D offset;
     Vector2D delta;
@@ -735,14 +753,14 @@ void modifyPopulation2(const Vector2D* in, Vector2D* out, double c)
 
     for (; i <= Steps; ++i)
     {
-        if (rand() % 90 == 0)
+        if (chance(generator, 90))
         {
-            delta.setX(delta.x() + c * 0.03 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setX(delta.x() + rand(generator, c * 0.03 * 0.25));
         }
 
-        if (rand() % 90 == 0)
+        if (chance(generator, 90))
         {
-            delta.setY(delta.y() + c * 0.015 * 0.5 * (rand() - RAND_MAX / 2) / RAND_MAX);
+            delta.setY(delta.y() + rand(generator, c * 0.015 * 0.25));
         }
 
         offset += 0.05 * delta;
@@ -794,8 +812,10 @@ void selfCross(Vector2D* out)
 }
 
 
-void filterLow(Vector2D* out, double a = 1. - 0.5 * rand() / RAND_MAX)
+void filterLow(Vector2D* out, double a)
 {
+    assert(a >= 0 && a < 1);
+    a = 1. - a;
     const auto b = (1. - a) * 0.5;
     auto prevY = out[0].y();
     for (int i = 1; i < Steps; ++i)
@@ -806,12 +826,9 @@ void filterLow(Vector2D* out, double a = 1. - 0.5 * rand() / RAND_MAX)
     }
 }
 
-void stretchOffsets(Vector2D* offsets, double k = 0.1)
+void stretchOffsets(Vector2D* offsets, double c)
 {
-    assert(k >= 0 && k < 1.);
-
-    auto rnd = rand();
-    const double c = 1. + k - k * 2. * rnd / RAND_MAX;
+    c += 1.;
     const double fulcrum = offsets[0].x();
     for (int i = 0; i <= Steps; ++i)
     {
@@ -820,29 +837,27 @@ void stretchOffsets(Vector2D* offsets, double k = 0.1)
 }
 
 
-void modifyPopulation(const Vector2D* in, Vector2D* out, double c)
+void modifyPopulation(Generator& generator, const Vector2D* in, Vector2D* out, double c)
 {
     for (int i = 0; i <= Steps; ++i)
     {
         out[i] = in[i];
     }
 
-    if (rand() % 2)
+    if (chance(generator, 2))
     {
-        stretchOffsets(out, c * 0.02);
+        stretchOffsets(out, rand(generator, c * 0.02));
     }
 
-    if (rand() % 2)
+    if (chance(generator, 2))
     {
-        filterLow(out, 1. - 0.4 * rand() / RAND_MAX);
+        filterLow(out, rand(generator, 0., 0.4));
     }
 }
 
-
-
-void cross(const Vector2D* first, const Vector2D* second, Vector2D* out)
+void cross(Generator& generator, const Vector2D* first, const Vector2D* second, Vector2D* out)
 {
-    int index = rand() % Steps;
+    int index = generator() % Steps;
 
     int i = 0;
     for (; i < index; ++i)
@@ -858,7 +873,7 @@ void cross(const Vector2D* first, const Vector2D* second, Vector2D* out)
 
 void generateOffsets(Vector2D* offsets)
 {
-    const double len = 1. + 1. * rand() / RAND_MAX;
+    const double len = 1.5;
     const double first = 0.;//-0.08f * rand() / RAND_MAX;
     for (int i = 0; i <= Steps; ++i)
     {
@@ -1052,8 +1067,7 @@ bool loadOffsets(std::vector<Vector2D>& offsets, double& scale)
 
 Investigation::Investigation(QObject* parent) :
     QObject(parent),
-    threads(std::thread::hardware_concurrency()),
-    tempResults(threads.size())
+    threadData(std::thread::hardware_concurrency())
 {
     for (int i = 0; i <= Steps; ++i)
     {
@@ -1076,7 +1090,8 @@ Investigation::~Investigation()
 
 void Investigation::geneticBranch(size_t index, double c)
 {
-    Result& result = tempResults[index];
+    Result& result = threadData[index].result;
+    auto& generator = threadData[index].generator;
 
     constexpr int popCount = 20;
 
@@ -1136,12 +1151,12 @@ void Investigation::geneticBranch(size_t index, double c)
         {
          //   cross(p[0].first.data(), p[1].first.data(), p[i].first.data());
 
-            (*m[mIndex])(p[i % 2].points.data(), p[i].points.data(), c);
+            (*m[mIndex])(generator, p[i % 2].points.data(), p[i].points.data(), c);
 
             p[i].points.back().setY(0);
 
          //   checkOffsets(p[i].points.data());
-            if (rand() % 4 == 0)
+            if (chance(generator, 4))
             {
                 selfCross(p[i].points.data());
             }
@@ -1157,7 +1172,7 @@ void Investigation::geneticBranch(size_t index, double c)
             return b.square < a.square;
         });
 
-        rotate(p[rand() % 2].points.data());
+        rotate(p[generator() % 2].points.data());
 
         if (oldMax > p[0].square - EPS)
         {
@@ -1199,26 +1214,23 @@ void Investigation::genetic()
 
     isTerminated = false;
 
-
-    for (size_t currentIndex = 0; currentIndex < threads.size(); ++currentIndex)
+    for (size_t currentIndex = 0; currentIndex < threadData.size(); ++currentIndex)
     {
+        auto& thrData = threadData[currentIndex];
+        thrData.result = results.front();
+        thrData.generator.seed(time(nullptr) + currentIndex);
 
-       tempResults[currentIndex] = results.front();
-
-       threads[currentIndex].reset(new std::thread([this, currentIndex]()
+       thrData.thread = std::thread([this, currentIndex, &thrData]()
        {
-           srand(clock() + currentIndex);
            while (!isTerminated)
            {
-               auto& r = tempResults[currentIndex];
-
-               if (rand() % 20)
+               if (!chance(thrData.generator, 20))
                {
-                   stretchOffsets(r.points.data(), 0.2 * sqrt(scale));
+                   stretchOffsets(thrData.result.points.data(), rand(thrData.generator, 0.2 * sqrt(scale)));
 
-                   for (int i = 0; i < 4; ++i)
+                   for (int i = 0; i < 5; ++i)
                    {
-                       filterLow(r.points.data(), 0.3);
+                       filterLow(thrData.result.points.data(), rand(thrData.generator, 0, 0.8));
                    }
                }
 
@@ -1230,41 +1242,37 @@ void Investigation::genetic()
                {
                     std::lock_guard<std::mutex> guard(mutex);
 
-                    if (r.square > results.front().square)
+                    if (thrData.result.square > results.front().square)
                     {
-                        results.front() = r;
+                        results.front() = thrData.result;
                         perform2(results.front().points.data(), rotations, &results.front().image);
                         isResultModified = true;
                     }
                     else
                     {
-                        r = results.front();
+                        thrData.result = results.front();
                     }
 
                     oldScale = scale;
                     scale *= 0.996;
                }
 
-               if (isResultModified || isTerminated)
-               {
-                   std::lock_guard<std::mutex> guard(fileMutex);
-                   saveOffsets(r.points.data(), oldScale);
-               }
 
                if (isResultModified)
                {
-                   qDebug() << "new maximum: " << r.square;
+                   {
+                       std::lock_guard<std::mutex> guard(fileMutex);
+                       saveOffsets(thrData.result.points.data(), oldScale);
+                   }
+
+                   qDebug() << "new maximum: " << thrData.result.square;
                    notifyAboutChanging();
                }
            }
-       }));
+       });
     }
-}
 
-
-double Investigation::getSquare() const
-{
-    return square;
+    saveOffsets(results.front().points.data(), scale);
 }
 
 double Investigation::perform2(Vector2D* offsets, Rotation* rotations, std::vector<bool>* image)
@@ -1289,6 +1297,33 @@ double Investigation::perform2(Vector2D* offsets, Rotation* rotations, std::vect
                 const auto p = getRTransformed(point, rotations[index], offsets[index]);
                 return p.x() < 1 && p.y() < 1 && !(p.x() < 0. && p.y() < 0.);
             };
+#if 0
+            auto check = [=](int index)
+            {
+                auto b = _mm_loadu_pd((double*)(offsets + index));
+                auto a = _mm_loadu_pd((double*)&point);
+                auto r = _mm_loadu_pd((double*)&rotations[index]);
+
+
+                auto delta = _mm_sub_pd(
+                            a,
+                            b);
+
+
+                auto r1 = _mm_shuffle_pd(r, r, 1);
+
+                auto p = _mm_addsub_pd(
+                            _mm_mul_pd(_mm_shuffle_pd(delta, delta, 1), r1),
+                            _mm_mul_pd(_mm_shuffle_pd(delta, delta, 0), r)
+                            );
+
+
+                auto res = _mm_andnot_pd(_mm_cmpnge_pd(p, _mm_set_pd(1., 1.)),
+                            _mm_cmpnge_pd(p, _mm_setzero_pd()));
+
+                return _mm_movemask_pd(res) == 3;
+            };
+#endif
 
 
             bool f = Steps % 2 == 0 && check(Steps / 2);
@@ -1348,7 +1383,7 @@ double Investigation::getSquare(int index)
 {
     std::lock_guard<std::mutex> guard(mutex);
 
-    const auto& r = index < 0 ? results.front() : tempResults[index];
+    const auto& r = index < 0 ? results.front() : threadData[index].result;
 
     return r.square;
 }
@@ -1357,7 +1392,7 @@ std::vector<QPointF> Investigation::getPoints(int index, double w, double h)
 {
     std::lock_guard<std::mutex> guard(mutex);
 
-    const auto& r = index < 0 ? results.front() : tempResults[index];
+    const auto& r = index < 0 ? results.front() : threadData[index].result;
 
     constexpr int sc = 4;
 
@@ -1384,10 +1419,9 @@ void Investigation::stop()
     if (!isTerminated)
     {
         isTerminated = true;
-        for (auto& thr : threads)
+        for (auto& thrData : threadData)
         {
-            thr->join();
-            thr.reset();
+            thrData.thread.join();
         }
     }
 }
@@ -1402,6 +1436,6 @@ void Investigation::notifyAboutChanging(int index)
 
 size_t Investigation::getThreadsCount() const
 {
-    return threads.size();
+    return threadData.size();
 }
 

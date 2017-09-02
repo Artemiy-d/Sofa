@@ -10,9 +10,6 @@
 MainView::MainView(QWidget *parent)
     : QWidget(parent)
 {
-
-    srand(clock());
-
     investigation = new Investigation(this);
     
     for (int i = 0; i < (int)investigation->getThreadsCount(); ++i)

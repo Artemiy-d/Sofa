@@ -7,8 +7,9 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <random>
 
-
+using Generator = std::mt19937;
 struct PolygonPoint;
 
 constexpr int Steps = 200;
@@ -22,9 +23,8 @@ struct Rotation
 class Investigation : public QObject
 {
     Q_OBJECT
+private:
 
-
-public:
     struct Result
     {
         std::vector<Vector2D> points;
@@ -32,23 +32,23 @@ public:
         std::vector<bool> image;
     };
 
+    struct ThreadData
+    {
+        std::thread thread;
+        Result result;
+        Generator generator;
+    };
+
     using Results = std::vector<Result>;
+
+public:
+
 
     Investigation(QObject* parent);
 
     ~Investigation();
 
-    void geneticBranch(size_t index, double c = 1.);
-
     void genetic();
-
-    double getSquare() const;
-
-    static double perform2(Vector2D* offsets, Rotation* rotations, std::vector<bool>* image = nullptr);
-
-    void perform2();
-
-    void perform();
 
     PolygonPoint* getOptimalPolygon();
 
@@ -64,6 +64,8 @@ public:
 
 private:
 
+    void geneticBranch(size_t index, double c);
+
     void notifyAboutChanging(int index = -1);
 
 signals:
@@ -76,8 +78,7 @@ private:
     std::mutex mutex;
     std::mutex fileMutex;
 
-    std::vector<std::unique_ptr<std::thread>> threads;
-    std::vector<Result> tempResults;
+    std::vector<ThreadData> threadData;
 
     Results results;
 
@@ -89,5 +90,11 @@ private:
 
     bool isDeleting = false;
     bool isTerminated = true;
+
+    static double perform2(Vector2D* offsets, Rotation* rotations, std::vector<bool>* image = nullptr);
+
+    void perform2();
+
+    void perform();
 };
 
