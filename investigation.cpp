@@ -24,6 +24,8 @@
 
 #include <xmmintrin.h>
 #include <emmintrin.h>
+#include <smmintrin.h>
+#include <pmmintrin.h>
 
 
 template <typename T>
@@ -799,15 +801,14 @@ void rotate(Vector2D* out)
 
 void selfCross(Vector2D* out)
 {
-    auto first = out[0].x();
-    auto last = out[Steps].x();
+    const auto deltaX = out[Steps].x() - out[0].x();
     for (int i = 0; i < (Steps + 1) / 2; ++i)
     {
         out[i].setY((out[Steps - i].y() + out[i].y()) * 0.5);
         out[Steps - i].setY(out[i].y());
 
-        out[i].setX((last - out[Steps - i].x() + out[i].x() - first) * 0.5);
-        out[Steps - i].setX(last - first - out[i].x());
+        out[i].setX((deltaX - out[Steps - i].x() + out[i].x()) * 0.5);
+        out[Steps - i].setX(deltaX - out[i].x());
     }
 }
 
@@ -855,19 +856,14 @@ void modifyPopulation(Generator& generator, const Vector2D* in, Vector2D* out, d
     }
 }
 
-void cross(Generator& generator, const Vector2D* first, const Vector2D* second, Vector2D* out)
+void mix(const Vector2D* first, const Vector2D* second, Vector2D* out, double c)
 {
-    int index = generator() % Steps;
+    const auto c1 = 0.5 + c;
+    const auto c2 = 1. - c1;
 
-    int i = 0;
-    for (; i < index; ++i)
+    for (int i = 0; i <= Steps; ++i)
     {
-        out[i] = first[i];
-    }
-
-    for (; i < Steps; ++i)
-    {
-        out[i] = second[i];
+        out[i] = c1 * first[i] + c2 * second[i];
     }
 }
 
@@ -1155,14 +1151,10 @@ void Investigation::geneticBranch(size_t index, double c)
 
             p[i].points.back().setY(0);
 
-         //   checkOffsets(p[i].points.data());
-            if (chance(generator, 4))
+            if (chance(generator, 5))
             {
                 selfCross(p[i].points.data());
             }
-
-
-
 
             p[i].square = perform2(p[i].points.data(), rotations);
         }
@@ -1224,17 +1216,21 @@ void Investigation::genetic()
        {
            while (!isTerminated)
            {
-               if (!chance(thrData.generator, 20))
+               if (!chance(thrData.generator, 12))
                {
                    stretchOffsets(thrData.result.points.data(), rand(thrData.generator, 0.2 * sqrt(scale)));
 
-                   for (int i = 0; i < 5; ++i)
+                   for (int i = 0; i < 8; ++i)
                    {
                        filterLow(thrData.result.points.data(), rand(thrData.generator, 0., 0.8));
                    }
                }
+               else if (chance(thrData.generator, 2))
+               {
+                   mix(thrData.result.points.data(), results.front().points.data(), thrData.result.points.data(), rand(thrData.generator, 0.2));
+               }
 
-               geneticBranch(currentIndex, scale);
+               geneticBranch(currentIndex, rand(thrData.generator, 0.9, 1.1) * scale);
 
                bool isResultModified = false;
                double oldScale = 0.;
@@ -1292,39 +1288,37 @@ double Investigation::perform2(Vector2D* offsets, Rotation* rotations, std::vect
             const Vector2D point((double(i) + 0.5) * maxSofaLen / double(ImageW) - maxSofaLen + 1,
                                   (double(j) + 0.5) / ImageH);
 
+
+#ifdef QT_DEBUG
             auto check = [&](int index)
             {
                 const auto p = getRTransformed(point, rotations[index], offsets[index]);
                 return p.x() < 1 && p.y() < 1 && !(p.x() < 0. && p.y() < 0.);
             };
-#if 0
-            auto check = [=](int index)
+#else
+            auto oneone = _mm_set_pd(1., 1.);
+            auto psse = _mm_loadu_pd((double*)&point);
+            auto check = [&](int index)
             {
-                auto b = _mm_loadu_pd((double*)(offsets + index));
-                auto a = _mm_loadu_pd((double*)&point);
                 auto r = _mm_loadu_pd((double*)&rotations[index]);
 
-
                 auto delta = _mm_sub_pd(
-                            a,
-                            b);
-
+                            psse,
+                            _mm_loadu_pd((double*)(offsets + index)));
 
                 auto r1 = _mm_shuffle_pd(r, r, 1);
 
                 auto p = _mm_addsub_pd(
-                            _mm_mul_pd(_mm_shuffle_pd(delta, delta, 1), r1),
-                            _mm_mul_pd(_mm_shuffle_pd(delta, delta, 0), r)
+                            _mm_mul_pd(_mm_shuffle_pd(delta, delta, 3), r),
+                            _mm_mul_pd(_mm_shuffle_pd(delta, delta, 0), r1)
                             );
 
+                auto res = _mm_andnot_pd(_mm_cmpnge_pd(p, _mm_setzero_pd()),
+                                         _mm_cmpnge_pd(p, oneone));
 
-                auto res = _mm_andnot_pd(_mm_cmpnge_pd(p, _mm_set_pd(1., 1.)),
-                            _mm_cmpnge_pd(p, _mm_setzero_pd()));
-
-                return _mm_movemask_pd(res) == 3;
+                return _mm_movemask_pd(res) & 3;
             };
 #endif
-
 
             bool f = Steps % 2 == 0 && check(Steps / 2);
 
